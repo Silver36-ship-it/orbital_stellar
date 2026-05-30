@@ -6,7 +6,7 @@ import type {
 import { createHmac, timingSafeEqual } from "crypto";
 
 import type { WebhookConfig } from "./types.js";
-export { verifyWebhookEdge } from "./edge.js";
+export { verifyWebhookEdge, verifyWebhookEdgeRaw } from "./edge.js";
 export type { WebhookConfig } from "./types.js";
 
 export interface DeadLetterEntry {
@@ -295,13 +295,50 @@ export class WebhookDelivery {
   }
 }
 
+/**
+ * Verifies webhook signature and returns parsed event.
+ * Use when you need to access the event payload immediately.
+ *
+ * @param payload - The raw request body
+ * @param signature - The x-orbital-signature header value
+ * @param secret - Your webhook secret
+ * @param timestamp - The x-orbital-timestamp header value
+ * @returns Parsed NormalizedEvent if verification succeeds, null otherwise
+ */
 export function verifyWebhook(
   payload: string,
   signature: string,
   secret: string,
   timestamp: string,
 ): NormalizedEvent | null {
-  if (!/^\d+$/.test(timestamp)) return null;
+  if (!verifyWebhookRaw(payload, signature, secret, timestamp)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(payload) as NormalizedEvent;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Verifies webhook signature without parsing JSON.
+ * Use when routing raw body to another consumer (e.g., queue) to avoid parse overhead.
+ *
+ * @param payload - The raw request body
+ * @param signature - The x-orbital-signature header value
+ * @param secret - Your webhook secret
+ * @param timestamp - The x-orbital-timestamp header value
+ * @returns true if signature is valid, false otherwise
+ */
+export function verifyWebhookRaw(
+  payload: string,
+  signature: string,
+  secret: string,
+  timestamp: string,
+): boolean {
+  if (!/^\d+$/.test(timestamp)) return false;
 
   const expected = createHmac("sha256", secret)
     .update(`${timestamp}.${payload}`)
@@ -310,12 +347,7 @@ export function verifyWebhook(
   const expectedBuffer = Buffer.from(expected, "hex");
   const signatureBuffer = Buffer.from(signature, "hex");
 
-  if (expectedBuffer.length !== signatureBuffer.length) return null;
-  if (!timingSafeEqual(expectedBuffer, signatureBuffer)) return null;
+  if (expectedBuffer.length !== signatureBuffer.length) return false;
 
-  try {
-    return JSON.parse(payload) as NormalizedEvent;
-  } catch {
-    return null;
-  }
+  return timingSafeEqual(expectedBuffer, signatureBuffer);
 }

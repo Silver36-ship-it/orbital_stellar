@@ -133,11 +133,54 @@ Verifies that `payload` was signed with `secret` using `timestamp + "." + payloa
 
 Uses `crypto.timingSafeEqual` under the hood — do not roll your own comparison.
 
+**When to use:** Standard webhook verification when you need access to the event payload immediately.
+
+### `verifyWebhookRaw(payload, signature, secret, timestamp)` → `boolean`
+
+Verifies the signature of `payload` without parsing JSON. Returns `true` if the signature is valid, `false` otherwise.
+
+Use this when routing the raw body to another consumer (e.g., a message queue) to avoid the JSON parse overhead.
+
+```ts
+const isValid = verifyWebhookRaw(rawPayload, signature, secret, timestamp);
+if (isValid) {
+  // Send raw payload to SQS, Kafka, etc. without parsing
+  await queue.send(rawPayload);
+} else {
+  res.sendStatus(401);
+}
+```
+
+**When to use:** When you're routing webhooks to a queue or other service and don't need to access the event data immediately.
+
 ### `verifyWebhookEdge(payload, signature, secret, timestamp)` → `Promise<NormalizedEvent | null>`
 
 Edge-compatible version of `verifyWebhook` using Web Crypto API. Works in Cloudflare Workers, Deno, and browsers. Returns a Promise that resolves to the parsed event on success, `null` on any failure.
 
 Uses constant-time comparison and Web Crypto for HMAC-SHA256 verification.
+
+### `verifyWebhookEdgeRaw(payload, signature, secret, timestamp)` → `Promise<boolean>`
+
+Edge-compatible version of `verifyWebhookRaw` using Web Crypto API. Verifies the signature without parsing JSON. Returns `true` if the signature is valid, `false` otherwise.
+
+Use this in edge runtimes when routing raw payloads to avoid JSON parse overhead.
+
+```js
+const isValid = await verifyWebhookEdgeRaw(
+  rawPayload,
+  signature,
+  secret,
+  timestamp,
+);
+if (isValid) {
+  // Send raw payload to R2, KV, or other Cloudflare service
+  await env.BUCKET.put(key, rawPayload);
+} else {
+  return new Response("Invalid signature", { status: 401 });
+}
+```
+
+**When to use:** Edge runtime webhook verification with no immediate need for parsed event data.
 
 ## Delivery contract
 
