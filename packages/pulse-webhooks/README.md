@@ -307,6 +307,48 @@ CREATE INDEX dlq_url_timestamp_idx ON dead_letter_store(url, timestamp);
 
 **Note:** `limit` does not require an index; it just truncates the result set after filtering.
 
+## Health Aggregation
+
+Monitor delivery health for a webhook URL using per-URL failure metrics and success tracking.
+
+### `deliveryHealth(url)` → `DeadLetterHealth`
+
+Returns health metrics for a specific webhook URL.
+
+```ts
+import { deliveryHealth } from "@orbital/pulse-webhooks";
+
+const health = deliveryHealth("https://example.com/webhooks");
+console.log(health);
+// {
+//   healthy: true,
+//   lastSuccess: 1714176000000,
+//   lastFailure: 1714172800000,
+//   failureRate: 0.02  // 2% failure rate
+// }
+```
+
+**Health rule:** A URL is considered `healthy = true` when:
+
+- Failure rate < 5% in the **last hour**, AND
+- At least one successful delivery in the **last 15 minutes**
+
+If no failures exist in the last hour, `failureRate` is 0 (all successes).
+
+**Return fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `healthy` | `boolean` | Overall health status per the rule above |
+| `lastSuccess` | `number \| undefined` | Unix ms timestamp of most recent successful delivery, if any |
+| `lastFailure` | `number \| undefined` | Unix ms timestamp of most recent failed delivery in the last hour, if any |
+| `failureRate` | `number` | Ratio of failures to total attempts in the last hour (0–1, e.g., 0.05 = 5%) |
+
+**Use cases:**
+
+- Health dashboards and status pages
+- Alert routing (route alerts if `healthy = false`)
+- Capacity planning (track which webhooks fail most often)
+
 ## Security
 
 - **Verify every signature.** `verifyWebhook` uses constant-time comparison.
